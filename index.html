@@ -1,0 +1,101 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+<body>
+  <h2>Vi-Em Vending Control (Web Bluetooth)</h2>
+  <button onclick="onConnect()">1. Connect ke ESP32</button>
+  <button onclick="tryReconnect()">Reconnect</button>
+  <br><br>
+  <button onclick="sendByteCommand(1)">ON</button>
+  <button onclick="sendByteCommand(0)">OFF</button>
+  <button onclick="sendByteCommand(2)">BLINK</button>
+  <button onclick="sendByteCommand(3)">CLEAR</button>
+  <br><br>
+  <input id="textInput" type="text" placeholder="Tulis teks ke LCD" maxlength="40" />
+  <button onclick="sendTextCommand()">Kirim Teks</button>
+  <p id="status">Status: Belum terhubung</p>
+  <p id="deviceInfo">Device: -</p>
+
+  <script>
+    let bleCharacteristic;
+    let currentDevice;
+    let currentServer;
+    const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const statusEl = document.getElementById("status");
+    const deviceInfoEl = document.getElementById("deviceInfo");
+    const textInputEl = document.getElementById("textInput");
+
+    async function connectToDevice(device) {
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      bleCharacteristic = await service.getCharacteristic(CHAR_UUID);
+      currentServer = server;
+      statusEl.textContent = "Status: Terhubung";
+      deviceInfoEl.textContent = `Device: ${device.name || "(tanpa nama)"} | ID: ${device.id}`;
+    }
+
+    async function onConnect() {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }]
+        });
+        currentDevice = device;
+        currentDevice.addEventListener("gattserverdisconnected", handleDisconnected);
+        await connectToDevice(device);
+        alert("Terhubung ke Vi-Em!");
+      } catch (error) {
+        statusEl.textContent = "Status: Gagal terhubung";
+        console.log("Error: " + error);
+      }
+    }
+
+    async function tryReconnect() {
+      if (!currentDevice) {
+        statusEl.textContent = "Status: Belum ada device tersimpan";
+        return;
+      }
+      try {
+        statusEl.textContent = "Status: Reconnecting...";
+        await connectToDevice(currentDevice);
+      } catch (error) {
+        statusEl.textContent = "Status: Reconnect gagal";
+        console.log("Reconnect error:", error);
+      }
+    }
+
+    function handleDisconnected() {
+      statusEl.textContent = "Status: Terputus, mencoba reconnect...";
+      tryReconnect();
+    }
+
+    async function sendByteCommand(value) {
+      if (bleCharacteristic) {
+        const data = new Uint8Array([value]);
+        await bleCharacteristic.writeValue(data);
+        console.log("Sent: " + value);
+        statusEl.textContent = `Status: Perintah ${value} terkirim`;
+      } else {
+        alert("Hubungkan bluetooth dulu!");
+      }
+    }
+
+    async function sendTextCommand() {
+      if (!bleCharacteristic) {
+        alert("Hubungkan bluetooth dulu!");
+        return;
+      }
+      const text = textInputEl.value.trim();
+      if (!text) {
+        statusEl.textContent = "Status: Teks kosong";
+        return;
+      }
+      const payload = `TXT:${text}`;
+      const data = new TextEncoder().encode(payload);
+      await bleCharacteristic.writeValue(data);
+      statusEl.textContent = `Status: Teks "${text}" terkirim`;
+      console.log("Sent text:", payload);
+    }
+  </script>
+</body>
+</html>
